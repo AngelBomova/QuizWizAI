@@ -32,15 +32,22 @@ class QuizQuestion(BaseModel):
 class QuizData(BaseModel):
     questions: List[QuizQuestion]
 
-def generate_quiz(topic: str, num_questions: int) -> List[Dict[str, Any]]:
+def generate_quiz(topic: str, num_questions: int, difficulty: str = "medium") -> List[Dict[str, Any]]:
     """Generate quiz questions using Gemini API"""
     try:
+        difficulty_instructions = {
+            "easy": "Make questions suitable for beginners with straightforward concepts and obvious answers.",
+            "medium": "Make questions moderately challenging with some nuance and require understanding of core concepts.",
+            "hard": "Make questions advanced and challenging, requiring deep knowledge and critical thinking."
+        }
+        
         system_prompt = (
             f"You are an expert quiz maker. Create {num_questions} multiple-choice questions about {topic}. "
+            f"Difficulty level: {difficulty.upper()}. {difficulty_instructions.get(difficulty, difficulty_instructions['medium'])} "
             f"Each question should have exactly 4 options (A, B, C, D). "
             f"Provide the correct answer as an index (0 for A, 1 for B, 2 for C, 3 for D). "
             f"Include a brief explanation for each correct answer. "
-            f"Make sure questions are educational and appropriately challenging. "
+            f"Make sure questions are educational and appropriately challenging for the {difficulty} difficulty level. "
             f"Respond with a JSON object containing a 'questions' array."
         )
 
@@ -120,16 +127,15 @@ def main():
         st.header("📝 Quiz Setup")
         
         with st.form("quiz_setup"):
+            topic = st.text_input(
+                "Quiz Topic",
+                placeholder="e.g., Python Programming, World History, Biology",
+                help="Enter the subject or topic you want to be quizzed on"
+            )
+            
             col1, col2 = st.columns(2)
             
             with col1:
-                topic = st.text_input(
-                    "Quiz Topic",
-                    placeholder="e.g., Python Programming, World History, Biology",
-                    help="Enter the subject or topic you want to be quizzed on"
-                )
-            
-            with col2:
                 num_questions = st.selectbox(
                     "Number of Questions",
                     options=[5, 10, 15, 20],
@@ -137,12 +143,21 @@ def main():
                     help="Choose how many questions you want in your quiz"
                 )
             
+            with col2:
+                difficulty = st.selectbox(
+                    "Difficulty Level",
+                    options=["easy", "medium", "hard"],
+                    index=1,
+                    format_func=lambda x: x.capitalize(),
+                    help="Choose the difficulty level of your quiz"
+                )
+            
             submitted = st.form_submit_button("🚀 Generate Quiz", use_container_width=True)
             
             if submitted:
                 if topic.strip():
                     with st.spinner("🤖 Generating your custom quiz..."):
-                        questions = generate_quiz(topic, num_questions)
+                        questions = generate_quiz(topic, num_questions, difficulty)
                         
                         if questions:
                             st.session_state.questions = questions
