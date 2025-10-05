@@ -6,6 +6,7 @@ from google.genai import types
 from pydantic import BaseModel
 from typing import List, Dict, Any
 import time
+from database import init_db, save_quiz_result, get_quiz_history, get_quiz_statistics
 
 # Configure page
 st.set_page_config(
@@ -14,12 +15,23 @@ st.set_page_config(
     layout="wide"
 )
 
+# Initialize database
+@st.cache_resource
+def setup_database():
+    try:
+        init_db()
+        return True
+    except Exception as e:
+        st.error(f"Database initialization failed: {str(e)}")
+        return False
+
 # Initialize Gemini client
 @st.cache_resource
 def get_gemini_client():
     api_key = os.getenv("GEMINI_API_KEY", "AIzaSyC1Ya4UKEypukBUOZyUkajjLsMLaA9d_Pw")
     return genai.Client(api_key=api_key)
 
+db_available = setup_database()
 client = get_gemini_client()
 
 # Pydantic models for structured responses
@@ -107,6 +119,37 @@ def show_result(user_answer: int, correct_answer: int, explanation: str, options
 def main():
     st.title("🧠 AI-Powered Quiz Maker")
     st.write("Generate custom multiple-choice quizzes on any topic using AI!")
+    
+    # Sidebar for quiz history
+    with st.sidebar:
+        st.header("📊 Quiz History")
+        
+        if db_available:
+            try:
+                stats = get_quiz_statistics()
+                
+                if stats["total_quizzes"] > 0:
+                    st.metric("Total Quizzes", stats["total_quizzes"])
+                    st.metric("Average Score", f"{stats['average_score']}%")
+                    st.metric("Best Score", f"{stats['best_score']}%")
+                    st.metric("Questions Answered", stats["total_questions_answered"])
+                    
+                    st.divider()
+                    
+                    st.subheader("Recent Quizzes")
+                    history = get_quiz_history(limit=10)
+                    
+                    for quiz in history:
+                        with st.expander(f"{quiz.topic} - {quiz.percentage:.1f}%"):
+                            st.write(f"**Difficulty:** {quiz.difficulty.capitalize()}")
+                            st.write(f"**Score:** {quiz.score}/{quiz.num_questions}")
+                            st.write(f"**Date:** {quiz.created_at.strftime('%Y-%m-%d %H:%M')}")
+                else:
+                    st.info("No quiz history yet. Take a quiz to get started!")
+            except Exception as e:
+                st.error(f"Error loading history: {str(e)}")
+        else:
+            st.warning("Quiz history unavailable. Database not connected.")
 
     # Initialize session state
     if 'quiz_generated' not in st.session_state:
@@ -121,6 +164,12 @@ def main():
         st.session_state.questions = []
     if 'show_result' not in st.session_state:
         st.session_state.show_result = False
+    if 'quiz_topic' not in st.session_state:
+        st.session_state.quiz_topic = ""
+    if 'quiz_difficulty' not in st.session_state:
+        st.session_state.quiz_difficulty = "medium"
+    if 'quiz_saved' not in st.session_state:
+        st.session_state.quiz_saved = False
 
     # Quiz setup form
     if not st.session_state.quiz_generated:
@@ -166,6 +215,9 @@ def main():
                             st.session_state.user_answers = []
                             st.session_state.quiz_completed = False
                             st.session_state.show_result = False
+                            st.session_state.quiz_topic = topic
+                            st.session_state.quiz_difficulty = difficulty
+                            st.session_state.quiz_saved = False
                             st.rerun()
                         else:
                             st.error("Failed to generate quiz. Please try a different topic.")
@@ -229,6 +281,25 @@ def main():
                            if answer == questions[i]["correct_answer"])
         total_questions = len(questions)
         percentage = (correct_count / total_questions) * 100
+        
+        # Save quiz result to database (only once)
+        if db_available and not st.session_state.quiz_saved:
+            try:
+                quiz_data_json = json.dumps({
+                    "questions": questions,
+                    "user_answers": user_answers
+                })
+                save_quiz_result(
+                    topic=st.session_state.quiz_topic,
+                    difficulty=st.session_state.quiz_difficulty,
+                    num_questions=total_questions,
+                    score=correct_count,
+                    percentage=percentage,
+                    quiz_data=quiz_data_json
+                )
+                st.session_state.quiz_saved = True
+            except Exception as e:
+                st.error(f"Error saving quiz result: {str(e)}")
         
         # Display overall score
         col1, col2, col3 = st.columns(3)

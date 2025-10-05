@@ -4,6 +4,7 @@ integrations = ["python_gemini:1.0.0"]
 
 [nix]
 channel = "stable-25_05"
+packages = ["libxcrypt"]
 
 [deployment]
 deploymentTarget = "autoscale"
@@ -36,7 +37,3 @@ outputType = "webview"
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 35109
-externalPort = 3000
