@@ -170,6 +170,12 @@ def main():
         st.session_state.quiz_difficulty = "medium"
     if 'quiz_saved' not in st.session_state:
         st.session_state.quiz_saved = False
+    if 'timer_enabled' not in st.session_state:
+        st.session_state.timer_enabled = False
+    if 'time_per_question' not in st.session_state:
+        st.session_state.time_per_question = 30
+    if 'question_start_time' not in st.session_state:
+        st.session_state.question_start_time = None
 
     # Quiz setup form
     if not st.session_state.quiz_generated:
@@ -201,6 +207,26 @@ def main():
                     help="Choose the difficulty level of your quiz"
                 )
             
+            col3, col4 = st.columns(2)
+            
+            with col3:
+                timer_enabled = st.checkbox(
+                    "Enable Timer ⏱️",
+                    value=False,
+                    help="Add a time limit for each question"
+                )
+            
+            with col4:
+                if timer_enabled:
+                    time_per_question = st.selectbox(
+                        "Time per Question (seconds)",
+                        options=[15, 30, 45, 60, 90],
+                        index=1,
+                        help="Set time limit for each question"
+                    )
+                else:
+                    time_per_question = 30
+            
             submitted = st.form_submit_button("🚀 Generate Quiz", use_container_width=True)
             
             if submitted:
@@ -218,6 +244,9 @@ def main():
                             st.session_state.quiz_topic = topic
                             st.session_state.quiz_difficulty = difficulty
                             st.session_state.quiz_saved = False
+                            st.session_state.timer_enabled = timer_enabled
+                            st.session_state.time_per_question = time_per_question
+                            st.session_state.question_start_time = time.time() if timer_enabled else None
                             st.rerun()
                         else:
                             st.error("Failed to generate quiz. Please try a different topic.")
@@ -235,6 +264,41 @@ def main():
             # Progress bar
             progress = (current_q) / len(questions)
             st.progress(progress)
+            
+            # Timer display and check
+            if st.session_state.timer_enabled and not st.session_state.show_result:
+                if st.session_state.question_start_time is None:
+                    st.session_state.question_start_time = time.time()
+                
+                elapsed_time = time.time() - st.session_state.question_start_time
+                time_remaining = st.session_state.time_per_question - int(elapsed_time)
+                
+                if time_remaining > 0:
+                    # Display timer
+                    timer_col1, timer_col2, timer_col3 = st.columns([1, 2, 1])
+                    with timer_col2:
+                        if time_remaining <= 5:
+                            st.error(f"⏱️ Time Remaining: {time_remaining} seconds")
+                        elif time_remaining <= 10:
+                            st.warning(f"⏱️ Time Remaining: {time_remaining} seconds")
+                        else:
+                            st.info(f"⏱️ Time Remaining: {time_remaining} seconds")
+                    
+                    # Auto-refresh to update timer
+                    time.sleep(0.1)
+                    st.rerun()
+                else:
+                    # Time's up - auto-submit with current selection
+                    st.error("⏰ Time's up!")
+                    # Get the user's current selection from session state
+                    question_key = f"question_{current_q + 1}"
+                    if question_key in st.session_state:
+                        selected_answer = st.session_state[question_key]
+                    else:
+                        selected_answer = 0  # Default to first option if no selection made
+                    st.session_state.user_answers.append(selected_answer)
+                    st.session_state.show_result = True
+                    st.rerun()
             
             # Display question
             user_answer = display_question(question_data, current_q + 1, len(questions))
@@ -263,6 +327,7 @@ def main():
                         if st.button("Next Question ➡️", use_container_width=True):
                             st.session_state.current_question += 1
                             st.session_state.show_result = False
+                            st.session_state.question_start_time = time.time() if st.session_state.timer_enabled else None
                             st.rerun()
                     else:
                         if st.button("View Final Results 🎯", use_container_width=True):
