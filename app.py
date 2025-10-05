@@ -6,7 +6,9 @@ from google.genai import types
 from pydantic import BaseModel
 from typing import List, Dict, Any
 import time
+from datetime import datetime
 from database import init_db, save_quiz_result, get_quiz_history, get_quiz_statistics
+from pdf_generator import generate_quiz_pdf
 
 # Configure page
 st.set_page_config(
@@ -411,9 +413,29 @@ def main():
                 
                 st.info(f"**Explanation:** {question_data['explanation']}")
         
-        # Option to take a new quiz
+        # Option to take a new quiz and export PDF
         st.divider()
-        col1, col2, col3 = st.columns([1, 2, 1])
+        
+        # Generate PDF
+        pdf_buffer = generate_quiz_pdf(
+            topic=st.session_state.quiz_topic,
+            difficulty=st.session_state.quiz_difficulty,
+            score=correct_count,
+            total_questions=total_questions,
+            percentage=percentage,
+            questions=questions,
+            user_answers=user_answers
+        )
+        
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col1:
+            st.download_button(
+                label="📄 Download PDF Report",
+                data=pdf_buffer,
+                file_name=f"quiz_results_{st.session_state.quiz_topic.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
         with col2:
             if st.button("Take Another Quiz 🔄", use_container_width=True, type="primary"):
                 # Reset all session state
